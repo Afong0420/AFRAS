@@ -1,0 +1,7 @@
+{
+    "require": {
+        "php": "^8.1"
+    },
+    "require-dev": {},
+    "scripts": {}
+}

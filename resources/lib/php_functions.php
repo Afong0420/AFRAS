@@ -69,28 +69,25 @@ function getVenueNames()
 }
 function getUnitNames()
 {
-    // Fetch units with per-day schedule and venue info from unit_schedule + venue
-    $sql = "SELECT u.unitCode, u.name, u.startTime, u.endTime, u.scheduleDays,
-                   GROUP_CONCAT(DISTINCT us.day ORDER BY FIELD(us.day,'Mon','Tue','Wed','Thu','Fri') SEPARATOR ',') AS sched_days
+    global $pdo;
+    $sql = "SELECT u.\"unitCode\", u.\"name\", u.\"startTime\", u.\"endTime\", u.\"scheduleDays\",
+                   STRING_AGG(DISTINCT us.\"day\", ',' ORDER BY us.\"day\") AS sched_days
             FROM unit u
-            LEFT JOIN unit_schedule us ON us.unitId = u.Id
-            GROUP BY u.Id";
+            LEFT JOIN unit_schedule us ON us.\"unitId\" = u.\"Id\"
+            GROUP BY u.\"Id\", u.\"unitCode\", u.\"name\", u.\"startTime\", u.\"endTime\", u.\"scheduleDays\"";
     $units = fetch($sql);
     if (!$units) return [];
 
-    // Fetch all unit_schedule rows with venue names
-    $schedSql = "SELECT us.unitId, us.day, us.session, us.startTime, us.endTime,
-                        us.venueID, v.className AS venueName
+    $schedSql = "SELECT us.\"unitId\", us.\"day\", us.\"session\", us.\"startTime\", us.\"endTime\",
+                        us.\"venueID\", v.\"className\" AS \"venueName\"
                  FROM unit_schedule us
-                 LEFT JOIN venue v ON v.Id = us.venueID
-                 ORDER BY FIELD(us.day,'Mon','Tue','Wed','Thu','Fri'),
-                          FIELD(us.session,'morning','afternoon')";
+                 LEFT JOIN venue v ON v.\"Id\" = us.\"venueID\"
+                 ORDER BY us.\"day\", us.\"session\"";
     $schedRows = fetch($schedSql);
-    $unitSchedMap = []; // unitId not available directly — key by unitCode via a second lookup
-    $unitIdMap    = []; // unitCode => unitId
+    $unitSchedMap = [];
+    $unitIdMap    = [];
 
-    // Fetch unit Ids
-    $idRows = fetch("SELECT Id, unitCode FROM unit");
+    $idRows = fetch("SELECT \"Id\", \"unitCode\" FROM unit");
     foreach (($idRows ?: []) as $ir) { $unitIdMap[$ir['unitCode']] = $ir['Id']; }
 
     foreach (($schedRows ?: []) as $sr) {
@@ -108,7 +105,7 @@ function getUnitNames()
     foreach ($units as $row) {
         $uid      = $unitIdMap[$row['unitCode']] ?? null;
         $dayData  = $uid ? ($unitSchedMap[$uid] ?? []) : [];
-        $row['day_schedule'] = json_encode($dayData); // { Mon: {venueID, venueName, sessions:{morning:{...}}} }
+        $row['day_schedule'] = json_encode($dayData);
         $row['has_morning']   = 0;
         $row['has_afternoon'] = 0;
         foreach ($dayData as $d => $dd) {
@@ -141,17 +138,21 @@ function showMessage(): void
 function total_rows($tablename)
 {
     global $pdo;
-    $stmt = $pdo->query("SELECT * FROM {$tablename}");
-    $total_rows = $stmt->rowCount();
-    echo $total_rows;
+    // PostgreSQL compatible row count
+    $stmt = $pdo->query("SELECT COUNT(*) FROM \"$tablename\"");
+    echo $stmt->fetchColumn();
 }
 
 function fetch($sql)
 {
     global $pdo;
-    $stmt = $pdo->query($sql);
-    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $result;
+    try {
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("fetch() error: " . $e->getMessage() . " | SQL: $sql");
+        return [];
+    }
 }
 
 
